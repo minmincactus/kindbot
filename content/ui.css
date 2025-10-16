@@ -1,0 +1,19 @@
+#wrap { pointer-events: auto; }
+.kb-toast{ position:fixed; right:16px; top:16px; background:#0b1326; color:#e9eefb;
+  border:1px solid #20325c; border-radius:10px; padding:8px 10px; font:13px system-ui; }
+
+.kb-card{ width:360px; background:#101a31; color:#e9eefb; border:1px solid #1f2a4a;
+  border-radius:14px; box-shadow:0 16px 50px rgba(0,0,0,.5); overflow:hidden; will-change: transform; }
+.kb-head{ display:flex; justify-content:space-between; align-items:center; padding:10px 12px;
+  background:linear-gradient(180deg,#122147,#0b1220); font-weight:600; cursor:move; user-select:none; }
+.kb-head-right{ display:flex; align-items:center; gap:8px }
+.kb-x{ background:transparent; color:#c9d6f7; border:none; font-size:14px; line-height:1; cursor:pointer; padding:2px 6px; }
+.kb-dragging{ opacity:0.92; }
+.kb-neg{ color:#9fb0d9; font-size:12px }
+.kb-body{ padding:10px 12px; max-height:320px; overflow:auto }
+.kb-suggestion{ background:#0b1326; border:1px solid #20325c; border-radius:10px; padding:10px; margin:8px 0 }
+.kb-suggestion p{ margin:0 0 8px 0; white-space:pre-wrap }
+.kb-actions{ display:flex; gap:8px }
+.kb-actions button{ border:none; border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:600 }
+.kb-actions .kb-copy{ background:#8ee0c2; color:#0b1326 }
+.kb-actions .kb-close{ background:#223154; color:#c9d6f7 }

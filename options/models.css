@@ -1,0 +1,8 @@
+body{font:14px system-ui,-apple-system,Segoe UI,Roboto;margin:20px;max-width:720px}
+h1{margin:0 0 8px}
+.hint{color:#666;margin:0 0 16px}
+.row{margin:10px 0;display:flex;gap:12px;align-items:center}
+label{display:flex;flex-direction:column;gap:6px;min-width:280px}
+input,select{padding:6px;border:1px solid #ccc;border-radius:8px}
+button{padding:8px 12px;border:0;border-radius:8px;background:#2b73ff;color:#fff;cursor:pointer}
+#status{margin-left:8px;color:#555}
