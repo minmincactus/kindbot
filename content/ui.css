@@ -17,3 +17,67 @@
 .kb-actions button{ border:none; border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:600 }
 .kb-actions .kb-copy{ background:#8ee0c2; color:#0b1326 }
 .kb-actions .kb-close{ background:#223154; color:#c9d6f7 }
+/* make the host clickable only where we want */
+#wrap { pointer-events: auto; }
+
+/* transparent overlay that blocks page clicks while the card is open */
+.kb-shield{
+  position: fixed;
+  inset: 0;
+  background: transparent;   /* keep it invisible */
+  pointer-events: auto;      /* it must catch clicks */
+  z-index: 2147483646;       /* just under the card */
+}
+
+/* ensure the card is above the shield and receives clicks */
+.kb-card{
+  position: fixed;
+  z-index: 2147483647;
+  pointer-events: auto;
+}
+
+/* screen-reader-only helper */
+.kb-sr{
+  position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;
+}
+
+/* state: suggestion chosen */
+.kb-suggestion.chosen{
+  border-color:#2d7d5f;               /* a bit greener */
+  box-shadow:0 0 0 2px rgba(142,224,194,0.35);
+  animation: kb-picked 260ms ease-out;
+}
+
+/* darken the Copy button when chosen */
+.kb-actions .kb-copy.is-copied{
+  background:#223154;                 /* dark */
+  color:#c9d6f7;
+  position:relative;
+}
+
+/* tiny check mark badge on the button */
+.kb-actions .kb-copy.is-copied::after{
+  content:'✓';
+  position:absolute;
+  right:10px;
+  top:50%;
+  transform:translateY(-50%);
+  font-weight:700;
+  opacity:0.85;
+}
+
+/* (optional) brief error flash */
+.kb-suggestion.copy-error{
+  animation: kb-copy-error 380ms ease-in;
+}
+
+/* animations */
+@keyframes kb-picked{
+  0%{ transform:translateZ(0) scale(0.98); }
+  100%{ transform:translateZ(0) scale(1); }
+}
+
+@keyframes kb-copy-error{
+  0%{ box-shadow:0 0 0 0 rgba(255,75,75,0.45); border-color:#ff6b6b; }
+  100%{ box-shadow:none; border-color:#20325c; }
+}

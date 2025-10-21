@@ -3,7 +3,7 @@ console.log('[KindBot] SW up');
 const DEFAULTS = {
   enabled: true,
   threshold: 0.0,
-  llmKey: ''   // set in popup
+  llmKey: 'AIzaSyCrl6icOT4yEM3DDi2Nf9DnucGh8GK4uWY'   // set in popup
 };
 
 // Prompt builder (no style/temperature)

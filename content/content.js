@@ -37,10 +37,16 @@ function getSelectedTextOrGmail() {
   if (gmailBody) return (gmailBody.innerText || gmailBody.textContent || '').trim();
   return '';
 }
-
 function renderCard(suggestions, neg) {
   const root = ensureHost();
-  root.querySelectorAll('.kb-card').forEach(n => n.remove());
+  root.querySelectorAll('.kb-card, .kb-shield').forEach(n => n.remove());
+
+  // create a transparent shield to block page clicks (and prevent "click off" behavior)
+  const shield = document.createElement('div');
+  shield.className = 'kb-shield';
+  // ignore clicks (do not close)
+  shield.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); }, true);
+  shield.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); }, true);
 
   const saved = localStorage.getItem('kindbot_card_pos');
   const pos = saved ? JSON.parse(saved) : { top: 20, left: 20 };
@@ -52,7 +58,7 @@ function renderCard(suggestions, neg) {
   card.dataset.posLeft = pos.left;
 
   card.innerHTML = `
-    <div class="kb-head" id="kbDragHandle" title="Drag to move" 
+    <div class="kb-head" id="kbDragHandle" title="Drag to move"
          style="cursor:move;display:flex;justify-content:space-between;align-items:center;">
       <strong>KindBot</strong>
       <div>
@@ -69,46 +75,78 @@ function renderCard(suggestions, neg) {
               <div class="kb-suggestion" style="margin-bottom:8px;">
                 <p>${escapeHtml(s)}</p>
                 <div class="kb-actions" style="margin-top:4px;">
-                  <button class="kb-copy">Use</button>
-                  <button class="kb-close">Close</button>
+                  <button class="kb-copy">Copy</button>
                 </div>
               </div>`).join('')
           : `<p class="kb-muted">Looks OK! No reframe needed.</p>`
       }
     </div>
   `;
-  root.getElementById('wrap').appendChild(card);
 
-  // ——— Close behavior ———
+  const wrap = root.getElementById('wrap');
+  wrap.appendChild(shield);
+  wrap.appendChild(card);
+
+  // ——— Close only via X or Esc ———
   const doClose = () => {
     card.remove();
-    document.removeEventListener('keydown', escCloser);
-    window.removeEventListener('mousedown', outsideClick, true);
+    shield.remove();
+    document.removeEventListener('keydown', escCloser, true);
   };
-  card.querySelector('.kb-x')?.addEventListener('click', doClose);
-  card.querySelectorAll('.kb-close').forEach(b => b.addEventListener('click', doClose));
-
+  card.querySelector('.kb-x')?.addEventListener('click', (e) => { e.stopPropagation(); doClose(); });
   function escCloser(e){ if (e.key === 'Escape') doClose(); }
-  document.addEventListener('keydown', escCloser);
-  function outsideClick(e){
-    const wrap = root.getElementById('wrap');
-    if (!wrap.contains(e.target)) doClose();
-  }
-  window.addEventListener('mousedown', outsideClick, true);
+  document.addEventListener('keydown', escCloser, true);
 
-  // ——— Copy behavior ———
-  card.querySelectorAll('.kb-copy').forEach(b => {
-    b.addEventListener('click', () => {
-      const t = b.closest('.kb-suggestion').querySelector('p').textContent;
-      navigator.clipboard.writeText(t);
-      doClose();
-    });
+  // ——— Copy behavior (no auto-close; visual feedback) ———
+const announcer = document.createElement('div');
+announcer.setAttribute('aria-live', 'polite');
+announcer.className = 'kb-sr';
+card.appendChild(announcer);
+
+card.querySelectorAll('.kb-copy').forEach(b => {
+  b.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const suggestionEl = b.closest('.kb-suggestion');
+    const text = suggestionEl.querySelector('p').textContent;
+
+    try {
+      await navigator.clipboard.writeText(text);
+
+      // Reset any previous "chosen" state
+      card.querySelectorAll('.kb-suggestion.chosen').forEach(el => el.classList.remove('chosen'));
+      card.querySelectorAll('.kb-copy.is-copied').forEach(btn => {
+        btn.classList.remove('is-copied');
+        btn.textContent = 'Copy';
+        btn.disabled = false;
+      });
+
+      // Mark this one chosen
+      suggestionEl.classList.add('chosen');
+      b.classList.add('is-copied');
+      b.textContent = 'Copied';
+      b.disabled = true; // (optional) prevent immediate double-click
+
+      // announce for screen readers
+      announcer.textContent = 'Copied suggestion to clipboard';
+
+      // (optional) re-enable button after a moment so user can copy again if needed
+      setTimeout(() => { b.disabled = false; }, 1200);
+
+    } catch (err) {
+      announcer.textContent = 'Copy failed';
+      // brief error flash
+      suggestionEl.classList.add('copy-error');
+      setTimeout(() => suggestionEl.classList.remove('copy-error'), 600);
+    }
   });
+});
 
-  // ——— Dragging ———
+
+  // ——— Dragging (single shared flag) ———
   const handle = card.querySelector('#kbDragHandle');
+  let dragging = false, startX=0, startY=0, startTop=0, startLeft=0;
+
   if (handle) {
-    let dragging = false, startX=0, startY=0, startTop=0, startLeft=0;
     handle.addEventListener('mousedown', (e) => {
       dragging = true;
       startX = e.clientX; startY = e.clientY;
@@ -116,7 +154,9 @@ function renderCard(suggestions, neg) {
       startLeft = parseFloat(card.dataset.posLeft || '20');
       card.classList.add('kb-dragging');
       e.preventDefault();
-    });
+      e.stopPropagation(); // don’t let it bubble to shield/page
+    }, true);
+
     window.addEventListener('mousemove', (e) => {
       if (!dragging) return;
       const dx = e.clientX - startX, dy = e.clientY - startY;
@@ -125,8 +165,9 @@ function renderCard(suggestions, neg) {
       card.style.transform = `translate(${newLeft}px, ${newTop}px)`;
       card.dataset.posTop = newTop;
       card.dataset.posLeft = newLeft;
-    });
-    window.addEventListener('mouseup', () => {
+    }, true);
+
+    const endDrag = (e) => {
       if (!dragging) return;
       dragging = false;
       card.classList.remove('kb-dragging');
@@ -134,9 +175,13 @@ function renderCard(suggestions, neg) {
         top: parseFloat(card.dataset.posTop),
         left: parseFloat(card.dataset.posLeft)
       }));
-    });
+      e?.stopPropagation?.();
+    };
+    window.addEventListener('mouseup', endDrag, true);
+    window.addEventListener('mouseleave', endDrag, true);
   }
 }
+
 
 function escapeHtml(s){
   return s.replace(/[&<>"']/g, c => (
