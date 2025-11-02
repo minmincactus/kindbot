@@ -211,3 +211,134 @@ chrome.runtime.onMessage.addListener((msg) => {
     renderCard(msg.suggestions || [], msg.neg);
   }
 });
+
+// ===== Proactive mode (Gmail/inputs/contenteditable) =====
+const PROACTIVE_MIN_CHARS = 40;         // don't trigger for tiny strings
+const PROACTIVE_DEBOUNCE_MS = 900;      // wait after user stops typing
+const PROACTIVE_DIFF_MIN = 25;          // require at least this many new chars since last request
+
+let proactiveTimer = null;
+let lastSentHash = '';
+let hintEl = null;   // the small floating pill
+
+// attach listeners once per page
+(function initProactive() {
+  // observe focus on inputs / textareas / contenteditable (incl. Gmail)
+  document.addEventListener('focusin', onFocusIn, true);
+})();
+
+function onFocusIn(e){
+  const el = getEditableEl(e.target);
+  if (!el) return;
+  ensureHint();                       // build the hint pill once
+  el.addEventListener('input', onEdit, { passive: true });
+  el.addEventListener('keyup', onEdit, { passive: true });   // helps with Gmail
+  positionHint(el);                   // place near caret
+}
+
+function getEditableEl(node){
+  if (!node) return null;
+  if (node instanceof HTMLTextAreaElement) return node;
+  if (node instanceof HTMLInputElement && /text|search|email|url|tel/.test(node.type || 'text')) return node;
+  // Gmail compose is a div[role="textbox"][g_editable="true"]
+  if (node.closest && node.closest('div[role="textbox"][g_editable="true"]')) {
+    return node.closest('div[role="textbox"][g_editable="true"]');
+  }
+  // generic contenteditable
+  if (node.closest && node.closest('[contenteditable="true"]')) return node.closest('[contenteditable="true"]');
+  return null;
+}
+
+function onEdit(e){
+  const el = getEditableEl(e.target);
+  if (!el) return;
+
+  // debounce
+  clearTimeout(proactiveTimer);
+  proactiveTimer = setTimeout(() => maybeSuggest(el), PROACTIVE_DEBOUNCE_MS);
+  positionHint(el); // keep pill near caret while typing
+}
+
+function maybeSuggest(el){
+  const text = getEditableText(el).trim();
+  if (text.length < PROACTIVE_MIN_CHARS) {
+    hideHint();
+    return;
+  }
+
+  // simple hash to avoid spamming background with nearly same text
+  const h = simpleHash(text);
+  if (text.length - (lastSentHash ? parseInt(lastSentHash.split(':')[1]||'0',10) : 0) < PROACTIVE_DIFF_MIN && h.split(':')[0] === (lastSentHash.split(':')[0]||'')) {
+    // too similar / small delta
+    return;
+  }
+
+  showHint(el, () => {
+    // user clicked the pill -> ask service worker, then show the overlay
+    chrome.runtime.sendMessage({ type: 'kindbot_proactive_request', text }, (resp) => {
+      // overlay will be shown by background via kindbot_show_suggestions
+      // we still keep the pill visible so they can click again after edits
+    });
+  });
+  lastSentHash = h + ':' + String(text.length);
+}
+
+function getEditableText(el){
+  if (el.value != null) return el.value;
+  // contenteditable: get visible text
+  return (el.innerText || el.textContent || '');
+}
+
+function simpleHash(str){
+  let h = 2166136261 >>> 0;
+  for (let i=0;i<str.length;i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0).toString(16);
+}
+
+// ------- floating hint pill -------
+function ensureHint(){
+  if (hintEl) return;
+  const root = ensureHost();
+  hintEl = document.createElement('button');
+  hintEl.className = 'kb-proactive-pill';
+  hintEl.type = 'button';
+  hintEl.textContent = 'Reframe kindly';
+  hintEl.style.display = 'none';
+  root.getElementById('wrap').appendChild(hintEl);
+}
+
+function showHint(el, onClick){
+  ensureHint();
+  hintEl.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onClick?.(); };
+  hintEl.style.display = 'block';
+  positionHint(el);
+}
+
+function hideHint(){ if (hintEl) hintEl.style.display = 'none'; }
+
+function positionHint(el){
+  if (!hintEl || hintEl.style.display === 'none') return;
+  const caret = getCaretClientRect(el);
+  if (!caret) return hideHint();
+
+  const x = caret.left + window.scrollX;
+  const y = caret.bottom + window.scrollY + 6; // a little under the caret
+  hintEl.style.transform = `translate(${x}px, ${y}px)`;
+}
+
+// get a rectangle near the current caret; fallback to element rect
+function getCaretClientRect(el){
+  try{
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount) {
+      const r = sel.getRangeAt(0).cloneRange();
+      if (r.getClientRects && r.getClientRects().length) return r.getClientRects()[0];
+      const span = document.createElement('span');
+      r.insertNode(span);
+      const rect = span.getBoundingClientRect();
+      span.remove();
+      return rect;
+    }
+  } catch {}
+  return el.getBoundingClientRect();
+}

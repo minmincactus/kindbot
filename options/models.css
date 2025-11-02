@@ -1,8 +1,85 @@
-body{font:14px system-ui,-apple-system,Segoe UI,Roboto;margin:20px;max-width:720px}
-h1{margin:0 0 8px}
-.hint{color:#666;margin:0 0 16px}
-.row{margin:10px 0;display:flex;gap:12px;align-items:center}
-label{display:flex;flex-direction:column;gap:6px;min-width:280px}
-input,select{padding:6px;border:1px solid #ccc;border-radius:8px}
-button{padding:8px 12px;border:0;border-radius:8px;background:#2b73ff;color:#fff;cursor:pointer}
-#status{margin-left:8px;color:#555}
+body {
+    font-family: "Fredoka", "Comic Neue", "Noto Sans JP", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    font-size: 15px;
+    margin: 24px;
+    max-width: 720px;
+    color: #3e3029;
+    background: linear-gradient(180deg, #fffbe8 0%, #fff6f9 100%);
+    border: 2px solid #ffe6b7;
+    border-radius: 20px;
+    box-shadow: 0 6px 25px rgba(255, 180, 90, 0.25);
+  }
+  
+  h1 {
+    margin: 0 0 12px;
+    font-size: 22px;
+    font-weight: 700;
+    color: #ff90b5;
+    text-shadow: 0 1px #fffbe8;
+  }
+  
+  .hint {
+    color: #9f8b7d;
+    margin: 0 0 18px;
+    font-size: 14px;
+  }
+  
+  .row {
+    margin: 12px 0;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+  
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 280px;
+    color: #573e32;
+    font-weight: 600;
+  }
+  
+  input,
+  select {
+    padding: 8px 10px;
+    border: 2px solid #ffe6b7;
+    border-radius: 12px;
+    background: #fffdf8;
+    box-shadow: inset 0 2px 4px rgba(255, 180, 90, 0.15);
+    color: #3e3029;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  input:focus,
+  select:focus {
+    outline: none;
+    border-color: #ffb26b;
+    box-shadow: 0 0 0 3px rgba(255, 178, 107, 0.3);
+  }
+  
+  button {
+    padding: 10px 16px;
+    border: 2px solid #ffc86b;
+    border-radius: 12px;
+    background: #baf5b1;
+    color: #124218;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  button:hover {
+    background: #f2b9ff;
+    color: #47294a;
+    border-color: #e5b3ff;
+    transform: translateY(-2px);
+  }
+  button:active {
+    transform: translateY(0);
+  }
+  
+  #status {
+    margin-left: 8px;
+    color: #7d7065;
+    font-size: 14px;
+  }
+  

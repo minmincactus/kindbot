@@ -77,25 +77,72 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     chrome.tabs.sendMessage(tab.id, { type: 'kindbot_reframe_request' });
   }
 });
-
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // ===== Right-click / Popup path =====
   if (msg.type === 'kindbot_reframe_selected' || msg.type === 'kindbot_popup_reframe') {
     (async () => {
       try {
         const { suggestions, neg } = await getReframe(msg.text);
-        const tabId = sender.tab?.id || (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0]?.id;
+        const tabId =
+          sender?.tab?.id ||
+          (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0]?.id;
+
         if (tabId) {
           await ensureContent(tabId);
           chrome.tabs.sendMessage(tabId, {
             type: 'kindbot_show_suggestions',
-            suggestions, neg, opts: { autoDismissMs: 2000 }
+            suggestions,
+            neg,
+            // you can keep or remove autoDismiss if you like
+            // opts: { autoDismissMs: 2000 }
           });
         }
         sendResponse({ ok: true });
       } catch (e) {
+        console.error('[KindBot][SW] reframe error:', e);
+        sendResponse({ ok: false, error: e.message });
+      }
+    })();
+    return true; // keep port open for async sendResponse
+  }
+
+  // ===== Proactive reframe request (pill click / typing) =====
+  if (msg.type === 'kindbot_proactive_request') {
+    (async () => {
+      try {
+        console.log('[KindBot][SW] proactive_request len=', msg.text?.length);
+        const { suggestions, neg } = await getReframe(msg.text);
+
+        // In some frames sender.tab may be undefined; fall back to active tab.
+        let tabId = sender?.tab?.id;
+        if (!tabId) {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          tabId = tab?.id;
+        }
+
+        if (tabId) {
+          await ensureContent(tabId);
+          chrome.tabs.sendMessage(tabId, {
+            type: 'kindbot_show_suggestions',
+            suggestions,
+            neg
+          });
+        } else {
+          console.warn('[KindBot][SW] No tabId to deliver suggestions');
+        }
+        sendResponse({ ok: true });
+      } catch (e) {
+        console.error('[KindBot][SW] proactive error:', e);
+        try {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (tab?.id) chrome.tabs.sendMessage(tab.id, { type: 'kindbot_show_error', error: e.message });
+        } catch {}
         sendResponse({ ok: false, error: e.message });
       }
     })();
     return true; // async
   }
+
+  // (optional) default: ignore other messages
+  // sendResponse && sendResponse({ ok: false, error: 'Unknown message type' });
 });

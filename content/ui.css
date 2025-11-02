@@ -1,83 +1,150 @@
-#wrap { pointer-events: auto; }
-.kb-toast{ position:fixed; right:16px; top:16px; background:#0b1326; color:#e9eefb;
-  border:1px solid #20325c; border-radius:10px; padding:8px 10px; font:13px system-ui; }
+/* ======== Pastel KindBot (drop-in) ======== */
+:root{
+  --kb-cream: #fffbe8;
+  --kb-card:  #fffdf8;
+  --kb-line:  #ffe6b7;
+  --kb-line-2:#ffc86b;
 
-.kb-card{ width:360px; background:#101a31; color:#e9eefb; border:1px solid #1f2a4a;
-  border-radius:14px; box-shadow:0 16px 50px rgba(0,0,0,.5); overflow:hidden; will-change: transform; }
-.kb-head{ display:flex; justify-content:space-between; align-items:center; padding:10px 12px;
-  background:linear-gradient(180deg,#122147,#0b1220); font-weight:600; cursor:move; user-select:none; }
-.kb-head-right{ display:flex; align-items:center; gap:8px }
-.kb-x{ background:transparent; color:#c9d6f7; border:none; font-size:14px; line-height:1; cursor:pointer; padding:2px 6px; }
-.kb-dragging{ opacity:0.92; }
-.kb-neg{ color:#9fb0d9; font-size:12px }
-.kb-body{ padding:10px 12px; max-height:320px; overflow:auto }
-.kb-suggestion{ background:#0b1326; border:1px solid #20325c; border-radius:10px; padding:10px; margin:8px 0 }
-.kb-suggestion p{ margin:0 0 8px 0; white-space:pre-wrap }
-.kb-actions{ display:flex; gap:8px }
-.kb-actions button{ border:none; border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:600 }
-.kb-actions .kb-copy{ background:#8ee0c2; color:#0b1326 }
-.kb-actions .kb-close{ background:#223154; color:#c9d6f7 }
-/* make the host clickable only where we want */
-#wrap { pointer-events: auto; }
+  --kb-text:  #3e3029;
+  --kb-muted: #9f8b7d;
 
-/* transparent overlay that blocks page clicks while the card is open */
-.kb-shield{
-  position: fixed;
-  inset: 0;
-  background: transparent;   /* keep it invisible */
-  pointer-events: auto;      /* it must catch clicks */
-  z-index: 2147483646;       /* just under the card */
+  --kb-mint:  #baf5b1;
+  --kb-mint-text:#124218;
+
+  --kb-lilac: #f2b9ff;
+  --kb-lilac-text:#47294a;
+
+  --kb-shadow: 0 14px 40px rgba(255,180,90,.22);
+  --kb-focus:  #ff90b5;
 }
 
-/* ensure the card is above the shield and receives clicks */
+#wrap{ pointer-events:auto; }
+
+/* toast */
+.kb-toast{
+  position:fixed; right:16px; top:16px;
+  background:#fff8e8;
+  color:#574800;
+  border:2px solid var(--kb-line);
+  border-radius:14px;
+  padding:8px 12px;
+  font:13px "Fredoka",system-ui;
+  box-shadow:0 10px 26px rgba(0,0,0,.12);
+}
+
+/* card */
 .kb-card{
   position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   z-index: 2147483647;
   pointer-events: auto;
 }
 
-/* screen-reader-only helper */
-.kb-sr{
-  position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;
+/* header */
+.kb-head{
+  display:flex; justify-content:space-between; align-items:center;
+  padding:10px 12px;
+  background:linear-gradient(180deg,#fff2d8,#ffeede);
+  border-bottom:2px dotted var(--kb-line-2);
+  font-weight:700; user-select:none; cursor:move;
+  letter-spacing:.3px;
+  color:var(--kb-text);
 }
 
-/* state: suggestion chosen */
+.kb-head-right{ display:flex; align-items:center; gap:8px }
+
+.kb-x{
+  background:transparent; border:none;
+  color:#7f6c60; font-size:16px; line-height:1;
+  cursor:pointer; padding:4px 8px; border-radius:10px;
+}
+.kb-x:hover{ background:var(--kb-lilac); color:var(--kb-lilac-text); }
+.kb-x:focus{ outline:2px solid var(--kb-focus); outline-offset:2px; }
+
+.kb-dragging{ opacity:.98; transform:translateZ(0) scale(1.005); }
+.kb-neg{ color:var(--kb-muted); font-size:12px }
+
+.kb-body{ padding:10px 12px; max-height:320px; overflow:auto }
+
+/* suggestion tiles */
+.kb-suggestion{
+  background:#fffafd;
+  border:2px solid var(--kb-line);
+  border-radius:16px;
+  padding:10px; margin:10px 0;
+}
+.kb-suggestion p{ margin:0 0 8px 0; white-space:pre-wrap }
+
+/* actions */
+.kb-actions{ display:flex; gap:8px }
+.kb-actions button{
+  border:2px solid var(--kb-line-2);
+  border-radius:12px;
+  padding:8px 12px;
+  cursor:pointer; font-weight:700;
+  transition:transform .08s ease, filter .12s ease;
+}
+
+.kb-actions .kb-copy{
+  background:var(--kb-mint); color:var(--kb-mint-text);
+}
+.kb-actions .kb-copy:hover{ transform:translateY(-1px); filter:brightness(1.03); }
+
+.kb-actions .kb-close{
+  background:var(--kb-lilac); color:var(--kb-lilac-text);
+  border-color:#e5b3ff;
+}
+
+/* chosen state (after Copy) */
 .kb-suggestion.chosen{
-  border-color:#2d7d5f;               /* a bit greener */
-  box-shadow:0 0 0 2px rgba(142,224,194,0.35);
-  animation: kb-picked 260ms ease-out;
+  border-color:#d9c2ff;
+  box-shadow:0 0 0 2px rgba(242,185,255,.28);
+  animation:kb-picked .22s ease-out;
 }
-
-/* darken the Copy button when chosen */
 .kb-actions .kb-copy.is-copied{
-  background:#223154;                 /* dark */
-  color:#c9d6f7;
-  position:relative;
+  background:#ffe8f3; color:#5b2e3f; border-color:#ffb7d3; position:relative;
 }
-
-/* tiny check mark badge on the button */
 .kb-actions .kb-copy.is-copied::after{
-  content:'✓';
-  position:absolute;
-  right:10px;
-  top:50%;
-  transform:translateY(-50%);
-  font-weight:700;
-  opacity:0.85;
+  content:'✓'; position:absolute; right:10px; top:50%;
+  transform:translateY(-50%); font-weight:800; opacity:.9;
 }
 
-/* (optional) brief error flash */
+/* error flash */
 .kb-suggestion.copy-error{
-  animation: kb-copy-error 380ms ease-in;
+  animation:kb-copy-error .34s ease-in;
+}
+
+/* shield to block page clicks */
+.kb-shield{
+  position:fixed; inset:0; background:transparent;
+  pointer-events:auto; z-index:2147483646;
 }
 
 /* animations */
 @keyframes kb-picked{
-  0%{ transform:translateZ(0) scale(0.98); }
+  0%{ transform:translateZ(0) scale(.985); }
   100%{ transform:translateZ(0) scale(1); }
 }
-
 @keyframes kb-copy-error{
-  0%{ box-shadow:0 0 0 0 rgba(255,75,75,0.45); border-color:#ff6b6b; }
-  100%{ box-shadow:none; border-color:#20325c; }
+  0%{ box-shadow:0 0 0 0 rgba(255,115,115,.35); border-color:#ff9aa2; }
+  100%{ box-shadow:none; border-color:var(--kb-line); }
 }
+
+/* proactive pill */
+.kb-proactive-pill{
+  position:absolute; z-index:2147483647;
+  border:2px solid var(--kb-line-2);
+  background:var(--kb-lilac);
+  color:var(--kb-lilac-text);
+  padding:6px 12px; border-radius:999px;
+  font:12px "Fredoka",system-ui;
+  box-shadow:var(--kb-shadow);
+  cursor:pointer; transition:opacity .12s ease, transform .08s ease;
+  opacity:.98;
+}
+.kb-proactive-pill:hover{ opacity:1; transform:translateY(-2px) scale(1.03); }
+
+/* a11y helper */
+.kb-sr{ position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden; }
