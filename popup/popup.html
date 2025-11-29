@@ -6,13 +6,29 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
+  <button id="closePopup" class="kb-close-popup" aria-label="Close">✕</button>
+
   <h1>KindBot</h1>
-  <p class="muted">Highlight text, then right-click “Reframe kindly” or press Alt/Option+K.</p>
+  <p class="hint">
+    Highlight text, then right-click “Reframe kindly” or press Alt/Option+K.
+  </p>
+
+  <div class="row">
+    <label class="toggle-label">
+      <span>KindBot is</span>
+      <button id="toggleKindBot" class="pill pill-off" type="button">
+        Off
+      </button>
+    </label>
+  </div>
 
   <h2>Quick test</h2>
-  <textarea id="testInput" rows="3" placeholder="Paste a tense sentence…"></textarea>
-  <button id="btnTest">Reframe kindly</button>
-  <div id="note"></div>
+  <textarea id="demoText" placeholder="Paste a tense sentence…"></textarea>
+
+  <div class="row">
+    <button id="demoBtn" type="button">Reframe kindly</button>
+    <span id="status"></span>
+  </div>
 
   <script src="popup.js"></script>
 </body>

@@ -33,30 +33,56 @@ function ensureHost() {
 function getSelectedTextOrGmail() {
   const sel = window.getSelection();
   if (sel && String(sel).trim()) return String(sel).trim();
-  const gmailBody = document.querySelector('[aria-label="Message Body"], div[role="textbox"][g_editable="true"]');
+  const gmailBody = document.querySelector(
+    '[aria-label="Message Body"], div[role="textbox"][g_editable="true"]'
+  );
   if (gmailBody) return (gmailBody.innerText || gmailBody.textContent || '').trim();
   return '';
 }
+
+// --- helper: best rect near selection/caret or fallback center
+function getAnchorRect() {
+  try {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount) {
+      const r = sel.getRangeAt(0).cloneRange();
+      if (r.getClientRects && r.getClientRects().length) return r.getClientRects()[0];
+
+      // fallback: insert temp span to measure
+      const span = document.createElement('span');
+      span.textContent = '\u200b';
+      r.insertNode(span);
+      const rect = span.getBoundingClientRect();
+      span.remove();
+      return rect;
+    }
+  } catch {}
+  // final fallback: center-ish
+  return {
+    top: window.innerHeight / 2 - 80,
+    left: window.innerWidth / 2 - 180,
+    bottom: window.innerHeight / 2 - 80
+  };
+}
+
 function renderCard(suggestions, neg) {
   const root = ensureHost();
   root.querySelectorAll('.kb-card, .kb-shield').forEach(n => n.remove());
 
-  // create a transparent shield to block page clicks (and prevent "click off" behavior)
+  // transparent shield blocks page clicks (but doesn’t close the card)
   const shield = document.createElement('div');
   shield.className = 'kb-shield';
-  // ignore clicks (do not close)
-  shield.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); }, true);
-  shield.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); }, true);
-
-  const saved = localStorage.getItem('kindbot_card_pos');
-  const pos = saved ? JSON.parse(saved) : { top: 20, left: 20 };
+  shield.addEventListener('mousedown', e => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+  shield.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
 
   const card = document.createElement('div');
   card.className = 'kb-card';
-  card.style.transform = `translate(${pos.left}px, ${pos.top}px)`;
-  card.dataset.posTop = pos.top;
-  card.dataset.posLeft = pos.left;
-
   card.innerHTML = `
     <div class="kb-head" id="kbDragHandle" title="Drag to move"
          style="cursor:move;display:flex;justify-content:space-between;align-items:center;">
@@ -87,84 +113,121 @@ function renderCard(suggestions, neg) {
   wrap.appendChild(shield);
   wrap.appendChild(card);
 
-  // ——— Close only via X or Esc ———
+  // ---- initial placement: near selection/caret, clamped to viewport
+  const anchor = getAnchorRect();
+  const rect = card.getBoundingClientRect();
+  const cardW = rect.width || 360;
+  const cardH = rect.height || 200;
+  const gap = 12;
+
+  let top = (anchor.bottom ?? anchor.top) + gap;
+  let left = anchor.left;
+
+  // clamp to viewport with padding
+  const pad = 8;
+  const maxTop = Math.max(pad, window.innerHeight - cardH - pad);
+  const maxLeft = Math.max(pad, window.innerWidth - cardW - pad);
+
+  top = Math.min(maxTop, Math.max(pad, top));
+  left = Math.min(maxLeft, Math.max(pad, left));
+
+  card.style.position = 'fixed';
+  card.style.top = `${top}px`;
+  card.style.left = `${left}px`;
+  card.dataset.posTop = String(top);
+  card.dataset.posLeft = String(left);
+
+  // —— Close only via X or Esc
   const doClose = () => {
     card.remove();
     shield.remove();
     document.removeEventListener('keydown', escCloser, true);
   };
-  card.querySelector('.kb-x')?.addEventListener('click', (e) => { e.stopPropagation(); doClose(); });
-  function escCloser(e){ if (e.key === 'Escape') doClose(); }
+  card.querySelector('.kb-x')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    doClose();
+  });
+  function escCloser(e) {
+    if (e.key === 'Escape') doClose();
+  }
   document.addEventListener('keydown', escCloser, true);
 
-  // ——— Copy behavior (no auto-close; visual feedback) ———
-const announcer = document.createElement('div');
-announcer.setAttribute('aria-live', 'polite');
-announcer.className = 'kb-sr';
-card.appendChild(announcer);
+  // —— Copy (no auto-close; visual feedback)
+  const announcer = document.createElement('div');
+  announcer.setAttribute('aria-live', 'polite');
+  announcer.className = 'kb-sr';
+  card.appendChild(announcer);
 
-card.querySelectorAll('.kb-copy').forEach(b => {
-  b.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    const suggestionEl = b.closest('.kb-suggestion');
-    const text = suggestionEl.querySelector('p').textContent;
+  card.querySelectorAll('.kb-copy').forEach(b => {
+    b.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const suggestionEl = b.closest('.kb-suggestion');
+      const text = suggestionEl.querySelector('p').textContent;
+      try {
+        await navigator.clipboard.writeText(text);
 
-    try {
-      await navigator.clipboard.writeText(text);
+        // reset any previous chosen state
+        card.querySelectorAll('.kb-suggestion.chosen').forEach(el => el.classList.remove('chosen'));
+        card.querySelectorAll('.kb-copy.is-copied').forEach(btn => {
+          btn.classList.remove('is-copied');
+          btn.textContent = 'Copy';
+          btn.disabled = false;
+        });
 
-      // Reset any previous "chosen" state
-      card.querySelectorAll('.kb-suggestion.chosen').forEach(el => el.classList.remove('chosen'));
-      card.querySelectorAll('.kb-copy.is-copied').forEach(btn => {
-        btn.classList.remove('is-copied');
-        btn.textContent = 'Copy';
-        btn.disabled = false;
-      });
+        // mark this one as chosen
+        suggestionEl.classList.add('chosen');
+        b.classList.add('is-copied');
+        b.textContent = 'Copied';
+        b.disabled = true;
+        announcer.textContent = 'Copied suggestion to clipboard';
 
-      // Mark this one chosen
-      suggestionEl.classList.add('chosen');
-      b.classList.add('is-copied');
-      b.textContent = 'Copied';
-      b.disabled = true; // (optional) prevent immediate double-click
-
-      // announce for screen readers
-      announcer.textContent = 'Copied suggestion to clipboard';
-
-      // (optional) re-enable button after a moment so user can copy again if needed
-      setTimeout(() => { b.disabled = false; }, 1200);
-
-    } catch (err) {
-      announcer.textContent = 'Copy failed';
-      // brief error flash
-      suggestionEl.classList.add('copy-error');
-      setTimeout(() => suggestionEl.classList.remove('copy-error'), 600);
-    }
+        setTimeout(() => { b.disabled = false; }, 1200);
+      } catch {
+        suggestionEl.classList.add('copy-error');
+        announcer.textContent = 'Copy failed';
+        setTimeout(() => suggestionEl.classList.remove('copy-error'), 600);
+      }
+    });
   });
-});
 
-
-  // ——— Dragging (single shared flag) ———
+  // —— Dragging (updates top/left, clamped, no transform)
   const handle = card.querySelector('#kbDragHandle');
-  let dragging = false, startX=0, startY=0, startTop=0, startLeft=0;
+  let dragging = false, startX = 0, startY = 0, startTop = 0, startLeft = 0;
 
   if (handle) {
     handle.addEventListener('mousedown', (e) => {
       dragging = true;
-      startX = e.clientX; startY = e.clientY;
-      startTop = parseFloat(card.dataset.posTop || '20');
-      startLeft = parseFloat(card.dataset.posLeft || '20');
+      const r = card.getBoundingClientRect();
+      startX = e.clientX;
+      startY = e.clientY;
+      startTop = parseFloat(card.dataset.posTop || r.top);
+      startLeft = parseFloat(card.dataset.posLeft || r.left);
       card.classList.add('kb-dragging');
       e.preventDefault();
-      e.stopPropagation(); // don’t let it bubble to shield/page
+      e.stopPropagation();
     }, true);
 
     window.addEventListener('mousemove', (e) => {
       if (!dragging) return;
-      const dx = e.clientX - startX, dy = e.clientY - startY;
-      const newTop = Math.max(8, startTop + dy);
-      const newLeft = startLeft + dx;
-      card.style.transform = `translate(${newLeft}px, ${newTop}px)`;
-      card.dataset.posTop = newTop;
-      card.dataset.posLeft = newLeft;
+      const r = card.getBoundingClientRect();
+      const cardW = r.width;
+      const cardH = r.height;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      let newTop = startTop + dy;
+      let newLeft = startLeft + dx;
+
+      const pad = 8;
+      const maxTop = Math.max(pad, window.innerHeight - cardH - pad);
+      const maxLeft = Math.max(pad, window.innerWidth - cardW - pad);
+
+      newTop = Math.min(maxTop, Math.max(pad, newTop));
+      newLeft = Math.min(maxLeft, Math.max(pad, newLeft));
+
+      card.style.top = `${newTop}px`;
+      card.style.left = `${newLeft}px`;
+      card.dataset.posTop = String(newTop);
+      card.dataset.posLeft = String(newLeft);
     }, true);
 
     const endDrag = (e) => {
@@ -181,7 +244,6 @@ card.querySelectorAll('.kb-copy').forEach(b => {
     window.addEventListener('mouseleave', endDrag, true);
   }
 }
-
 
 function escapeHtml(s){
   return s.replace(/[&<>"']/g, c => (
@@ -223,7 +285,6 @@ let hintEl = null;   // the small floating pill
 
 // attach listeners once per page
 (function initProactive() {
-  // observe focus on inputs / textareas / contenteditable (incl. Gmail)
   document.addEventListener('focusin', onFocusIn, true);
 })();
 
@@ -253,10 +314,9 @@ function onEdit(e){
   const el = getEditableEl(e.target);
   if (!el) return;
 
-  // debounce
   clearTimeout(proactiveTimer);
   proactiveTimer = setTimeout(() => maybeSuggest(el), PROACTIVE_DEBOUNCE_MS);
-  positionHint(el); // keep pill near caret while typing
+  positionHint(el);
 }
 
 function maybeSuggest(el){
@@ -266,18 +326,18 @@ function maybeSuggest(el){
     return;
   }
 
-  // simple hash to avoid spamming background with nearly same text
   const h = simpleHash(text);
-  if (text.length - (lastSentHash ? parseInt(lastSentHash.split(':')[1]||'0',10) : 0) < PROACTIVE_DIFF_MIN && h.split(':')[0] === (lastSentHash.split(':')[0]||'')) {
-    // too similar / small delta
+  if (
+    lastSentHash &&
+    h.split(':')[0] === lastSentHash.split(':')[0] &&
+    text.length - parseInt(lastSentHash.split(':')[1] || '0', 10) < PROACTIVE_DIFF_MIN
+  ) {
     return;
   }
 
   showHint(el, () => {
-    // user clicked the pill -> ask service worker, then show the overlay
-    chrome.runtime.sendMessage({ type: 'kindbot_proactive_request', text }, (resp) => {
-      // overlay will be shown by background via kindbot_show_suggestions
-      // we still keep the pill visible so they can click again after edits
+    chrome.runtime.sendMessage({ type: 'kindbot_proactive_request', text }, () => {
+      // overlay is shown from background via kindbot_show_suggestions
     });
   });
   lastSentHash = h + ':' + String(text.length);
@@ -285,7 +345,6 @@ function maybeSuggest(el){
 
 function getEditableText(el){
   if (el.value != null) return el.value;
-  // contenteditable: get visible text
   return (el.innerText || el.textContent || '');
 }
 
@@ -322,11 +381,10 @@ function positionHint(el){
   if (!caret) return hideHint();
 
   const x = caret.left + window.scrollX;
-  const y = caret.bottom + window.scrollY + 6; // a little under the caret
+  const y = caret.bottom + window.scrollY + 6;
   hintEl.style.transform = `translate(${x}px, ${y}px)`;
 }
 
-// get a rectangle near the current caret; fallback to element rect
 function getCaretClientRect(el){
   try{
     const sel = window.getSelection();
@@ -334,6 +392,7 @@ function getCaretClientRect(el){
       const r = sel.getRangeAt(0).cloneRange();
       if (r.getClientRects && r.getClientRects().length) return r.getClientRects()[0];
       const span = document.createElement('span');
+      span.textContent = '\u200b';
       r.insertNode(span);
       const rect = span.getBoundingClientRect();
       span.remove();

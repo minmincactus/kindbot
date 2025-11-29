@@ -1,12 +1,12 @@
+// service_worker.js
 console.log('[KindBot] SW up');
 
 const DEFAULTS = {
-  enabled: true,
-  threshold: 0.0,
-  llmKey: 'AIzaSyCrl6icOT4yEM3DDi2Nf9DnucGh8GK4uWY'   // set in popup
+  enabled: true,  // can be toggled from popup / context menu
+  llmKey: 'AIzaSyCrl6icOT4yEM3DDi2Nf9DnucGh8GK4uWY'
 };
 
-// Prompt builder (no style/temperature)
+// ---------------- Prompt builder (your long prompt) ----------------
 function buildPrompt(text) {
   return `You are KindBot. 
   First, you will give a percent grade for the following message using sentiment analysis evaluating kindness levels.
@@ -134,14 +134,18 @@ function buildPrompt(text) {
   Even though the original message deals with a sensitive and inherently tense subject matter, it is essential that the rewritten message does not sacrifice meaning for kindness
   The message still contains all releveant information and does not sacrifice it to be kinder.
 
-
 Original:
 """${text}"""`;
 }
 
+// ---------------- Gemini call ----------------
 async function callGemini(text) {
   const model = 'gemini-2.0-flash';
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${DEFAULTS.llmKey}`;
+  const cfg = await chrome.storage.local.get(DEFAULTS);
+  const key = cfg.llmKey || DEFAULTS.llmKey;
+
+  const endpoint =
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
 
   const body = {
     contents: [{ role: "user", parts: [{ text: buildPrompt(text) }]}],
@@ -166,11 +170,12 @@ async function callGemini(text) {
 }
 
 async function getReframe(text) {
-  const cfg = await chrome.storage.local.get(DEFAULTS);
-  return { suggestions: await callGemini(text, cfg), neg: 1 };
+  const suggestions = await callGemini(text);
+  // we’re no longer using a numeric negativity score, so pass null
+  return { suggestions, neg: null };
 }
 
-// Inject content script if needed
+// ---------------- inject content script ----------------
 async function ensureContent(tabId) {
   try {
     await chrome.scripting.executeScript({
@@ -182,9 +187,15 @@ async function ensureContent(tabId) {
   }
 }
 
-// Right-click menu
-function createMenus() {
+// ---------------- context menus (toggle + action) ----------------
+async function createMenus() {
+  const cfg = await chrome.storage.local.get(DEFAULTS);
   chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: 'kindbot-toggle',
+      title: `KindBot: ${cfg.enabled ? 'Enabled ✓' : 'Disabled ✗'}`,
+      contexts: ['all']
+    });
     chrome.contextMenus.create({
       id: 'kindbot-reframe',
       title: 'Reframe kindly',
@@ -192,19 +203,36 @@ function createMenus() {
     });
   });
 }
+
 chrome.runtime.onInstalled.addListener(createMenus);
 chrome.runtime.onStartup.addListener(createMenus);
 
-// Messaging
-chrome.contextMenus.onClicked.addListener((info, tab) => {
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId === 'kindbot-toggle') {
+    const cfg = await chrome.storage.local.get(DEFAULTS);
+    const next = !cfg.enabled;
+    await chrome.storage.local.set({ enabled: next });
+    createMenus();
+    return;
+  }
   if (info.menuItemId === 'kindbot-reframe' && tab?.id) {
     chrome.tabs.sendMessage(tab.id, { type: 'kindbot_reframe_request' });
   }
 });
+
+// ---------------- message routing (no sentiment gating) ----------------
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  // ===== Right-click / Popup path =====
-  if (msg.type === 'kindbot_reframe_selected' || msg.type === 'kindbot_popup_reframe') {
-    (async () => {
+  (async () => {
+    const cfg = await chrome.storage.local.get(DEFAULTS);
+    const enabled = !!cfg.enabled;
+
+    if (!enabled) {
+      sendResponse({ ok: false, error: 'KindBot disabled' });
+      return;
+    }
+
+    // Right-click or popup path
+    if (msg.type === 'kindbot_reframe_selected' || msg.type === 'kindbot_popup_reframe') {
       try {
         const { suggestions, neg } = await getReframe(msg.text);
         const tabId =
@@ -216,9 +244,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           chrome.tabs.sendMessage(tabId, {
             type: 'kindbot_show_suggestions',
             suggestions,
-            neg,
-            // you can keep or remove autoDismiss if you like
-            // opts: { autoDismissMs: 2000 }
+            neg
           });
         }
         sendResponse({ ok: true });
@@ -226,18 +252,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         console.error('[KindBot][SW] reframe error:', e);
         sendResponse({ ok: false, error: e.message });
       }
-    })();
-    return true; // keep port open for async sendResponse
-  }
+      return;
+    }
 
-  // ===== Proactive reframe request (pill click / typing) =====
-  if (msg.type === 'kindbot_proactive_request') {
-    (async () => {
+    // Proactive “pill” path
+    if (msg.type === 'kindbot_proactive_request') {
       try {
-        console.log('[KindBot][SW] proactive_request len=', msg.text?.length);
         const { suggestions, neg } = await getReframe(msg.text);
 
-        // In some frames sender.tab may be undefined; fall back to active tab.
         let tabId = sender?.tab?.id;
         if (!tabId) {
           const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -251,22 +273,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             suggestions,
             neg
           });
-        } else {
-          console.warn('[KindBot][SW] No tabId to deliver suggestions');
         }
         sendResponse({ ok: true });
       } catch (e) {
         console.error('[KindBot][SW] proactive error:', e);
-        try {
-          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-          if (tab?.id) chrome.tabs.sendMessage(tab.id, { type: 'kindbot_show_error', error: e.message });
-        } catch {}
         sendResponse({ ok: false, error: e.message });
       }
-    })();
-    return true; // async
-  }
+      return;
+    }
+  })();
 
-  // (optional) default: ignore other messages
-  // sendResponse && sendResponse({ ok: false, error: 'Unknown message type' });
+  return true; // keep channel open for async sendResponse
 });
